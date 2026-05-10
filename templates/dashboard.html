@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard Contabilidad</title>
+</head>
+<body>
+
+<h1>📊 Dashboard contable</h1>
+
+<!-- ===================== -->
+<!-- SUBIR FACTURA -->
+<!-- ===================== -->
+<h2>📤 Subir factura</h2>
+
+<form action="/upload" method="POST" enctype="multipart/form-data">
+
+    <input type="file" name="file" required>
+
+    <button type="submit">Subir factura</button>
+
+</form>
+
+<hr>
+
+<!-- ===================== -->
+<!-- RESUMEN -->
+<!-- ===================== -->
+<h2>💰 Resumen</h2>
+
+<p><b>Ingresos:</b> {{ ingresos }} €</p>
+<p><b>Gastos:</b> {{ gastos }} €</p>
+<p><b>Beneficio:</b> {{ beneficio }} €</p>
+
+<hr>
+
+<!-- ===================== -->
+<!-- MOVIMIENTOS -->
+<!-- ===================== -->
+<h2>📄 Movimientos</h2>
+
+<table border="1" cellpadding="5">
+    <tr>
+        <th>Fecha</th>
+        <th>Tipo</th>
+        <th>Importe</th>
+    </tr>
+
+    {% for m in movimientos %}
+    <tr>
+        <td>{{ m[5] }}</td>
+        <td>{{ m[4] }}</td>
+        <td>{{ m[3] }} €</td>
+    </tr>
+    {% endfor %}
+
+</table>
+
+<br>
+
+<!-- ===================== -->
+<!-- ACCIONES -->
+<!-- ===================== -->
+<a href="/exportar_excel">📤 Exportar Excel</a>
+<br><br>
+<a href="/logout">🚪 Cerrar sesión</a>
+
+</body>
+</html>
