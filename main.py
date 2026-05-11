@@ -3,6 +3,7 @@ import os
 import re
 import requests
 from datetime import datetime
+from collections import defaultdict
 
 import openpyxl
 
@@ -29,13 +30,13 @@ if not os.path.exists(UPLOAD_FOLDER):
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # =====================================================
-# OCR API
+# OCR
 # =====================================================
 
 OCR_API_KEY = "K87458836088957"
 
 # =====================================================
-# DB INIT
+# DB
 # =====================================================
 
 init_db()
@@ -54,6 +55,9 @@ def safe_float(valor):
     texto = texto.replace("EUR", "")
     texto = texto.replace(" ", "")
 
+    if texto.count(".") > 1:
+        texto = texto.replace(".", "")
+
     if "." in texto and "," in texto:
         texto = texto.replace(".", "")
         texto = texto.replace(",", ".")
@@ -62,7 +66,7 @@ def safe_float(valor):
         texto = texto.replace(",", ".")
 
     try:
-        return float(texto)
+        return round(float(texto), 2)
     except:
         return 0.0
 
@@ -82,8 +86,23 @@ def extraer_total(texto):
 def clasificar(texto):
     t = texto.lower()
 
-    ingresos = ["venta", "cliente", "factura emitida", "ingreso", "cobro"]
-    gastos = ["proveedor", "compra", "gasto", "factura recibida", "ticket"]
+    ingresos = [
+        "factura emitida",
+        "venta",
+        "cliente",
+        "cobro",
+        "ingreso",
+        "recibido"
+    ]
+
+    gastos = [
+        "factura recibida",
+        "proveedor",
+        "compra",
+        "gasto",
+        "pagado",
+        "cargo"
+    ]
 
     for i in ingresos:
         if i in t:
@@ -96,6 +115,65 @@ def clasificar(texto):
     return "DESCONOCIDO"
 
 
+# =====================================================
+# BALANCE MENSUAL
+# =====================================================
+
+def balance_mensual(movimientos):
+
+    meses = defaultdict(lambda: {"ingresos": 0, "gastos": 0})
+
+    for m in movimientos:
+
+        fecha = m[5]
+        importe = safe_float(m[3])
+        tipo = m[4]
+
+        mes = fecha[:7]
+
+        if tipo == "INGRESO":
+            meses[mes]["ingresos"] += importe
+        elif tipo == "GASTO":
+            meses[mes]["gastos"] += importe
+
+    for m in meses:
+        meses[m]["beneficio"] = meses[m]["ingresos"] - meses[m]["gastos"]
+
+    return dict(meses)
+
+
+# =====================================================
+# BALANCE SEMANAL
+# =====================================================
+
+def balance_semanal(movimientos):
+
+    semanas = defaultdict(lambda: {"ingresos": 0, "gastos": 0})
+
+    for m in movimientos:
+
+        fecha = m[5]
+        importe = safe_float(m[3])
+        tipo = m[4]
+
+        dt = datetime.strptime(fecha, "%Y-%m-%d")
+        semana = f"{dt.year}-W{dt.isocalendar()[1]}"
+
+        if tipo == "INGRESO":
+            semanas[semana]["ingresos"] += importe
+        elif tipo == "GASTO":
+            semanas[semana]["gastos"] += importe
+
+    for s in semanas:
+        semanas[s]["beneficio"] = semanas[s]["ingresos"] - semanas[s]["gastos"]
+
+    return dict(semanas)
+
+
+# =====================================================
+# OCR
+# =====================================================
+
 def hacer_ocr(filepath):
 
     with open(filepath, "rb") as f:
@@ -104,8 +182,7 @@ def hacer_ocr(filepath):
             files={"filename": f},
             data={
                 "apikey": OCR_API_KEY,
-                "language": "spa",
-                "isOverlayRequired": False
+                "language": "spa"
             }
         )
 
@@ -150,12 +227,10 @@ def login():
 def register():
 
     if request.method == "POST":
-
         crear_usuario(
             request.form["username"],
             request.form["password"]
         )
-
         return redirect("/login")
 
     return render_template("register.html")
@@ -166,8 +241,9 @@ def logout():
     session.clear()
     return redirect("/login")
 
+
 # =====================================================
-# DASHBOARD SAAS
+# DASHBOARD
 # =====================================================
 
 @app.route("/contabilidad")
@@ -207,11 +283,14 @@ def contabilidad():
         ingresos=round(ingresos, 2),
         gastos=round(gastos, 2),
         beneficio=round(beneficio, 2),
-        movimientos=historial
+        movimientos=historial,
+        balance=balance_mensual(movimientos),
+        semanal=balance_semanal(movimientos)
     )
 
+
 # =====================================================
-# UPLOAD OCR
+# UPLOAD
 # =====================================================
 
 @app.route("/upload", methods=["POST"])
@@ -240,8 +319,9 @@ def upload():
 
     return redirect("/contabilidad")
 
+
 # =====================================================
-# EXPORT EXCEL
+# EXPORT
 # =====================================================
 
 @app.route("/exportar_excel")
@@ -266,8 +346,9 @@ def exportar_excel():
 
     return send_file(file, as_attachment=True)
 
+
 # =====================================================
-# RUN (RENDER COMPATIBLE)
+# RUN (RENDER)
 # =====================================================
 
 if __name__ == "__main__":

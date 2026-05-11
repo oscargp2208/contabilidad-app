@@ -1,207 +1,112 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Dashboard Contabilidad</title>
+<meta charset="UTF-8">
+<title>Dashboard</title>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <style>
-        body {
-            font-family: Arial;
-            margin: 0;
-            background: #f5f6fa;
-        }
+<style>
+body {font-family: Arial; background:#f5f6fa; margin:0;}
+.header {background:#111827; color:white; padding:20px; text-align:center;}
+.container {padding:20px;}
 
-        .header {
-            background: #111827;
-            color: white;
-            padding: 20px;
-            text-align: center;
-        }
+.upload-box {background:white; padding:20px; border-radius:12px; margin-bottom:20px;}
 
-        .container {
-            padding: 20px;
-        }
+.cards {display:flex; gap:20px;}
+.card {flex:1; background:white; padding:20px; border-radius:12px;}
 
-        /* FORM UPLOAD */
-        .upload-box {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        }
+.green{color:green;}
+.red{color:red;}
+.blue{color:#2563eb;}
 
-        /* CARDS */
-        .cards {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
+table{width:100%; margin-top:20px; background:white; border-radius:12px;}
+th,td{padding:10px; border-bottom:1px solid #eee;}
 
-        .card {
-            flex: 1;
-            min-width: 200px;
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
+.monthly{background:white; margin-top:20px; padding:20px; border-radius:12px;}
 
-        .card h3 {
-            margin: 0;
-            font-size: 14px;
-            color: gray;
-        }
+/* NUEVO: colores etiquetas */
+.label-ingresos{color:green; font-weight:bold;}
+.label-gastos{color:red; font-weight:bold;}
+.label-beneficio{color:#2563eb; font-weight:bold;}
+</style>
 
-        .card p {
-            font-size: 24px;
-            margin: 10px 0 0 0;
-        }
-
-        .green { color: green; }
-        .red { color: red; }
-        .blue { color: #2563eb; }
-
-        /* CHART */
-        .chart-box {
-            background: white;
-            margin-top: 20px;
-            padding: 20px;
-            border-radius: 12px;
-        }
-
-        /* TABLE */
-        table {
-            width: 100%;
-            margin-top: 20px;
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }
-
-        th {
-            background: #f3f4f6;
-        }
-
-        /* BUTTON */
-        .btn {
-            display: inline-block;
-            margin-top: 20px;
-            padding: 10px 15px;
-            background: #111827;
-            color: white;
-            border-radius: 8px;
-            text-decoration: none;
-        }
-    </style>
 </head>
 
 <body>
 
 <div class="header">
-    <h1>💼 Dashboard Contabilidad</h1>
+<h1>💼 Dashboard Contabilidad PRO</h1>
 </div>
 
 <div class="container">
 
-    <!-- UPLOAD FACTURA -->
-    <div class="upload-box">
+<div class="upload-box">
+<form action="/upload" method="POST" enctype="multipart/form-data">
+<input type="file" name="file">
+<button>Subir factura</button>
+</form>
+</div>
 
-        <h3>📤 Subir factura</h3>
+<div class="cards">
+<div class="card">Ingresos <h2 class="green">{{ ingresos }} €</h2></div>
+<div class="card">Gastos <h2 class="red">{{ gastos }} €</h2></div>
+<div class="card">Beneficio <h2 class="blue">{{ beneficio }} €</h2></div>
+</div>
 
-        <form action="/upload" method="POST" enctype="multipart/form-data">
+<canvas id="chart"></canvas>
 
-            <input type="file" name="file" required>
+<!-- MENSUAL -->
+<h3>📅 Mensual</h3>
+<div class="monthly">
+{% for m, d in balance.items() %}
+<p>
+<b>{{ m }}</b> |
+<span class="label-ingresos">Ingresos:</span> {{ d.ingresos }} € |
+<span class="label-gastos">Gastos:</span> {{ d.gastos }} € |
+<span class="label-beneficio">Beneficio:</span> {{ d.beneficio }} €
+</p>
+{% endfor %}
+</div>
 
-            <button type="submit"
-                style="padding:10px 15px; background:#111827; color:white; border:none; border-radius:8px;">
-                Subir factura
-            </button>
+<!-- SEMANAL -->
+<h3>📆 Semanal</h3>
+<div class="monthly">
+{% for s, d in semanal.items() %}
+<p>
+<b>{{ s }}</b> |
+<span class="label-ingresos">Ingresos:</span> {{ d.ingresos }} € |
+<span class="label-gastos">Gastos:</span> {{ d.gastos }} € |
+<span class="label-beneficio">Beneficio:</span> {{ d.beneficio }} €
+</p>
+{% endfor %}
+</div>
 
-        </form>
-
-    </div>
-
-    <!-- CARDS -->
-    <div class="cards">
-
-        <div class="card">
-            <h3>Ingresos</h3>
-            <p class="green">{{ ingresos }} €</p>
-        </div>
-
-        <div class="card">
-            <h3>Gastos</h3>
-            <p class="red">{{ gastos }} €</p>
-        </div>
-
-        <div class="card">
-            <h3>Beneficio</h3>
-            <p class="blue">{{ beneficio }} €</p>
-        </div>
-
-    </div>
-
-    <!-- CHART -->
-    <div class="chart-box">
-        <canvas id="chart"></canvas>
-    </div>
-
-    <!-- EXPORT -->
-    <a class="btn" href="/exportar_excel">📥 Exportar Excel</a>
-
-    <!-- TABLE -->
-    <table>
-        <tr>
-            <th>Fecha</th>
-            <th>Tipo</th>
-            <th>Importe</th>
-            <th>Texto</th>
-        </tr>
-
-        {% for m in movimientos %}
-        <tr>
-            <td>{{ m.fecha }}</td>
-            <td>{{ m.tipo }}</td>
-            <td>{{ m.importe }} €</td>
-            <td>{{ m.texto[:40] }}</td>
-        </tr>
-        {% endfor %}
-    </table>
+<table>
+<tr><th>Fecha</th><th>Tipo</th><th>Importe</th><th>Texto</th></tr>
+{% for m in movimientos %}
+<tr>
+<td>{{ m.fecha }}</td>
+<td>{{ m.tipo }}</td>
+<td>{{ m.importe }}</td>
+<td>{{ m.texto[:40] }}</td>
+</tr>
+{% endfor %}
+</table>
 
 </div>
 
-<!-- CHART JS -->
 <script>
-    const ctx = document.getElementById('chart');
-
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: ['Ingresos', 'Gastos', 'Beneficio'],
-            datasets: [{
-                label: '€',
-                data: [
-                    {{ ingresos }},
-                    {{ gastos }},
-                    {{ beneficio }}
-                ],
-                backgroundColor: [
-                    'green',
-                    'red',
-                    'blue'
-                ]
-            }]
-        }
-    });
+new Chart(document.getElementById("chart"), {
+type:"bar",
+data:{
+labels:["Ingresos","Gastos","Beneficio"],
+datasets:[{
+data:[{{ ingresos }},{{ gastos }},{{ beneficio }}],
+backgroundColor:["green","red","blue"]
+}]
+}
+});
 </script>
 
 </body>
