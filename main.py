@@ -30,19 +30,19 @@ if not os.path.exists(UPLOAD_FOLDER):
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # =====================================================
-# OCR
+# OCR CONFIG
 # =====================================================
 
 OCR_API_KEY = "K87458836088957"
 
 # =====================================================
-# DB
+# INIT DB
 # =====================================================
 
 init_db()
 
 # =====================================================
-# HELPERS
+# SAFE FLOAT (ARREGLA NÚMEROS)
 # =====================================================
 
 def safe_float(valor):
@@ -55,9 +55,11 @@ def safe_float(valor):
     texto = texto.replace("EUR", "")
     texto = texto.replace(" ", "")
 
+    # miles múltiples puntos
     if texto.count(".") > 1:
         texto = texto.replace(".", "")
 
+    # formato europeo
     if "." in texto and "," in texto:
         texto = texto.replace(".", "")
         texto = texto.replace(",", ".")
@@ -70,50 +72,67 @@ def safe_float(valor):
     except:
         return 0.0
 
+# =====================================================
+# EXTRAER TOTAL REAL (MEJORADO)
+# =====================================================
 
 def extraer_total(texto):
-    numeros = re.findall(r"\d+[.,]?\d*[.,]?\d*", texto)
 
-    valores = []
-    for n in numeros:
-        v = safe_float(n)
-        if v > 0:
-            valores.append(v)
+    texto = texto.lower()
+
+    lineas = texto.split("\n")
+    candidatos = []
+
+    for l in lineas:
+        if "total" in l:
+
+            numeros = re.findall(r"\d+[.,]?\d{0,2}", l)
+
+            for n in numeros:
+                candidatos.append(safe_float(n))
+
+    if candidatos:
+        return max(candidatos)
+
+    numeros = re.findall(r"\d+[.,]?\d{2,3}", texto)
+
+    valores = [safe_float(n) for n in numeros]
+
+    valores = [v for v in valores if v > 10]
 
     return max(valores) if valores else 0.0
 
+# =====================================================
+# CLASIFICACIÓN INTELIGENTE
+# =====================================================
 
 def clasificar(texto):
+
     t = texto.lower()
 
-    ingresos = [
-        "factura emitida",
-        "venta",
-        "cliente",
-        "cobro",
-        "ingreso",
-        "recibido"
-    ]
+    score_ingreso = 0
+    score_gasto = 0
 
-    gastos = [
-        "factura recibida",
-        "proveedor",
-        "compra",
-        "gasto",
-        "pagado",
-        "cargo"
-    ]
+    # ingresos
+    if "factura emitida" in t: score_ingreso += 3
+    if "venta" in t: score_ingreso += 2
+    if "cliente" in t: score_ingreso += 2
+    if "cobro" in t: score_ingreso += 3
+    if "total factura" in t: score_ingreso += 1
 
-    for i in ingresos:
-        if i in t:
-            return "INGRESO"
+    # gastos
+    if "factura recibida" in t: score_gasto += 3
+    if "proveedor" in t: score_gasto += 2
+    if "compra" in t: score_gasto += 2
+    if "pagado" in t: score_gasto += 3
+    if "recibo" in t: score_gasto += 1
 
-    for g in gastos:
-        if g in t:
-            return "GASTO"
+    if score_ingreso > score_gasto:
+        return "INGRESO"
+    elif score_gasto > score_ingreso:
+        return "GASTO"
 
     return "DESCONOCIDO"
-
 
 # =====================================================
 # BALANCE MENSUAL
@@ -140,7 +159,6 @@ def balance_mensual(movimientos):
         meses[m]["beneficio"] = meses[m]["ingresos"] - meses[m]["gastos"]
 
     return dict(meses)
-
 
 # =====================================================
 # BALANCE SEMANAL
@@ -169,7 +187,6 @@ def balance_semanal(movimientos):
 
     return dict(semanas)
 
-
 # =====================================================
 # OCR
 # =====================================================
@@ -182,7 +199,9 @@ def hacer_ocr(filepath):
             files={"filename": f},
             data={
                 "apikey": OCR_API_KEY,
-                "language": "spa"
+                "language": "spa",
+                "isOverlayRequired": False,
+                "detectOrientation": True
             }
         )
 
@@ -241,7 +260,6 @@ def logout():
     session.clear()
     return redirect("/login")
 
-
 # =====================================================
 # DASHBOARD
 # =====================================================
@@ -288,7 +306,6 @@ def contabilidad():
         semanal=balance_semanal(movimientos)
     )
 
-
 # =====================================================
 # UPLOAD
 # =====================================================
@@ -319,9 +336,8 @@ def upload():
 
     return redirect("/contabilidad")
 
-
 # =====================================================
-# EXPORT
+# EXPORT EXCEL
 # =====================================================
 
 @app.route("/exportar_excel")
@@ -346,9 +362,8 @@ def exportar_excel():
 
     return send_file(file, as_attachment=True)
 
-
 # =====================================================
-# RUN (RENDER)
+# RUN
 # =====================================================
 
 if __name__ == "__main__":
