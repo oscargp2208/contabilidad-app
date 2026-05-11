@@ -1,4 +1,4 @@
 flask
-pillow
-pytesseract
 openpyxl
+gunicorn
+requests
