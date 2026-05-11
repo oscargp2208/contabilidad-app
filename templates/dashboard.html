@@ -1,68 +1,208 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
+    <meta charset="UTF-8">
     <title>Dashboard Contabilidad</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            font-family: Arial;
+            margin: 0;
+            background: #f5f6fa;
+        }
+
+        .header {
+            background: #111827;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .container {
+            padding: 20px;
+        }
+
+        /* FORM UPLOAD */
+        .upload-box {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        /* CARDS */
+        .cards {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .card {
+            flex: 1;
+            min-width: 200px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .card h3 {
+            margin: 0;
+            font-size: 14px;
+            color: gray;
+        }
+
+        .card p {
+            font-size: 24px;
+            margin: 10px 0 0 0;
+        }
+
+        .green { color: green; }
+        .red { color: red; }
+        .blue { color: #2563eb; }
+
+        /* CHART */
+        .chart-box {
+            background: white;
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 12px;
+        }
+
+        /* TABLE */
+        table {
+            width: 100%;
+            margin-top: 20px;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background: #f3f4f6;
+        }
+
+        /* BUTTON */
+        .btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 15px;
+            background: #111827;
+            color: white;
+            border-radius: 8px;
+            text-decoration: none;
+        }
+    </style>
 </head>
+
 <body>
 
-<h1>📊 Dashboard contable</h1>
+<div class="header">
+    <h1>💼 Dashboard Contabilidad</h1>
+</div>
 
-<!-- ===================== -->
-<!-- SUBIR FACTURA -->
-<!-- ===================== -->
-<h2>📤 Subir factura</h2>
+<div class="container">
 
-<form action="/upload" method="POST" enctype="multipart/form-data">
+    <!-- UPLOAD FACTURA -->
+    <div class="upload-box">
 
-    <input type="file" name="file" required>
+        <h3>📤 Subir factura</h3>
 
-    <button type="submit">Subir factura</button>
+        <form action="/upload" method="POST" enctype="multipart/form-data">
 
-</form>
+            <input type="file" name="file" required>
 
-<hr>
+            <button type="submit"
+                style="padding:10px 15px; background:#111827; color:white; border:none; border-radius:8px;">
+                Subir factura
+            </button>
 
-<!-- ===================== -->
-<!-- RESUMEN -->
-<!-- ===================== -->
-<h2>💰 Resumen</h2>
+        </form>
 
-<p><b>Ingresos:</b> {{ ingresos }} €</p>
-<p><b>Gastos:</b> {{ gastos }} €</p>
-<p><b>Beneficio:</b> {{ beneficio }} €</p>
+    </div>
 
-<hr>
+    <!-- CARDS -->
+    <div class="cards">
 
-<!-- ===================== -->
-<!-- MOVIMIENTOS -->
-<!-- ===================== -->
-<h2>📄 Movimientos</h2>
+        <div class="card">
+            <h3>Ingresos</h3>
+            <p class="green">{{ ingresos }} €</p>
+        </div>
 
-<table border="1" cellpadding="5">
-    <tr>
-        <th>Fecha</th>
-        <th>Tipo</th>
-        <th>Importe</th>
-    </tr>
+        <div class="card">
+            <h3>Gastos</h3>
+            <p class="red">{{ gastos }} €</p>
+        </div>
 
-    {% for m in movimientos %}
-    <tr>
-        <td>{{ m[5] }}</td>
-        <td>{{ m[4] }}</td>
-        <td>{{ m[3] }} €</td>
-    </tr>
-    {% endfor %}
+        <div class="card">
+            <h3>Beneficio</h3>
+            <p class="blue">{{ beneficio }} €</p>
+        </div>
 
-</table>
+    </div>
 
-<br>
+    <!-- CHART -->
+    <div class="chart-box">
+        <canvas id="chart"></canvas>
+    </div>
 
-<!-- ===================== -->
-<!-- ACCIONES -->
-<!-- ===================== -->
-<a href="/exportar_excel">📤 Exportar Excel</a>
-<br><br>
-<a href="/logout">🚪 Cerrar sesión</a>
+    <!-- EXPORT -->
+    <a class="btn" href="/exportar_excel">📥 Exportar Excel</a>
+
+    <!-- TABLE -->
+    <table>
+        <tr>
+            <th>Fecha</th>
+            <th>Tipo</th>
+            <th>Importe</th>
+            <th>Texto</th>
+        </tr>
+
+        {% for m in movimientos %}
+        <tr>
+            <td>{{ m.fecha }}</td>
+            <td>{{ m.tipo }}</td>
+            <td>{{ m.importe }} €</td>
+            <td>{{ m.texto[:40] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+</div>
+
+<!-- CHART JS -->
+<script>
+    const ctx = document.getElementById('chart');
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Ingresos', 'Gastos', 'Beneficio'],
+            datasets: [{
+                label: '€',
+                data: [
+                    {{ ingresos }},
+                    {{ gastos }},
+                    {{ beneficio }}
+                ],
+                backgroundColor: [
+                    'green',
+                    'red',
+                    'blue'
+                ]
+            }]
+        }
+    });
+</script>
 
 </body>
 </html>

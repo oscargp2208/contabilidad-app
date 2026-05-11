@@ -3,6 +3,7 @@ import os
 import re
 import requests
 from datetime import datetime
+
 import openpyxl
 
 from database import (
@@ -14,7 +15,7 @@ from database import (
 )
 
 # =====================================================
-# APP CONFIG
+# APP
 # =====================================================
 
 app = Flask(__name__)
@@ -28,19 +29,19 @@ if not os.path.exists(UPLOAD_FOLDER):
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # =====================================================
-# OCR API (OCR.space)
+# OCR API
 # =====================================================
 
 OCR_API_KEY = "K87458836088957"
 
 # =====================================================
-# INIT DB
+# DB INIT
 # =====================================================
 
 init_db()
 
 # =====================================================
-# UTILIDADES
+# HELPERS
 # =====================================================
 
 def safe_float(valor):
@@ -53,7 +54,6 @@ def safe_float(valor):
     texto = texto.replace("EUR", "")
     texto = texto.replace(" ", "")
 
-    # formato europeo 1.234,56
     if "." in texto and "," in texto:
         texto = texto.replace(".", "")
         texto = texto.replace(",", ".")
@@ -109,12 +109,12 @@ def hacer_ocr(filepath):
             }
         )
 
-    result = response.json()
+    data = response.json()
 
-    if result.get("IsErroredOnProcessing"):
+    if data.get("IsErroredOnProcessing"):
         return ""
 
-    return result["ParsedResults"][0]["ParsedText"]
+    return data["ParsedResults"][0]["ParsedText"]
 
 # =====================================================
 # ROUTES
@@ -129,30 +129,32 @@ def home():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+
     if request.method == "POST":
 
-        username = request.form["username"]
-        password = request.form["password"]
-
-        user = buscar_usuario(username, password)
+        user = buscar_usuario(
+            request.form["username"],
+            request.form["password"]
+        )
 
         if user:
             session["user_id"] = user[0]
             return redirect("/contabilidad")
 
-        return "Usuario incorrecto"
+        return "Login incorrecto"
 
     return render_template("login.html")
 
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
+
     if request.method == "POST":
 
-        username = request.form["username"]
-        password = request.form["password"]
-
-        crear_usuario(username, password)
+        crear_usuario(
+            request.form["username"],
+            request.form["password"]
+        )
 
         return redirect("/login")
 
@@ -164,6 +166,9 @@ def logout():
     session.clear()
     return redirect("/login")
 
+# =====================================================
+# DASHBOARD SAAS
+# =====================================================
 
 @app.route("/contabilidad")
 def contabilidad():
@@ -176,7 +181,10 @@ def contabilidad():
     ingresos = 0
     gastos = 0
 
+    historial = []
+
     for m in movimientos:
+
         importe = safe_float(m[3])
         tipo = m[4]
 
@@ -185,16 +193,26 @@ def contabilidad():
         elif tipo == "GASTO":
             gastos += importe
 
+        historial.append({
+            "fecha": m[5],
+            "tipo": tipo,
+            "importe": importe,
+            "texto": m[2]
+        })
+
     beneficio = ingresos - gastos
 
     return render_template(
         "dashboard.html",
-        movimientos=movimientos,
         ingresos=round(ingresos, 2),
         gastos=round(gastos, 2),
-        beneficio=round(beneficio, 2)
+        beneficio=round(beneficio, 2),
+        movimientos=historial
     )
 
+# =====================================================
+# UPLOAD OCR
+# =====================================================
 
 @app.route("/upload", methods=["POST"])
 def upload():
@@ -204,15 +222,11 @@ def upload():
 
     file = request.files["file"]
 
-    if file.filename == "":
-        return "Archivo vacío"
-
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
     file.save(filepath)
 
-    fecha = datetime.now().strftime("%Y-%m-%d")
-
     texto = hacer_ocr(filepath)
+
     total = extraer_total(texto)
     tipo = clasificar(texto)
 
@@ -221,11 +235,14 @@ def upload():
         texto,
         total,
         tipo,
-        fecha
+        datetime.now().strftime("%Y-%m-%d")
     )
 
     return redirect("/contabilidad")
 
+# =====================================================
+# EXPORT EXCEL
+# =====================================================
 
 @app.route("/exportar_excel")
 def exportar_excel():
@@ -249,9 +266,8 @@ def exportar_excel():
 
     return send_file(file, as_attachment=True)
 
-
 # =====================================================
-# RUN (IMPORTANTE PARA RENDER)
+# RUN (RENDER COMPATIBLE)
 # =====================================================
 
 if __name__ == "__main__":
