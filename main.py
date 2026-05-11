@@ -1,10 +1,9 @@
 from flask import Flask, render_template, request, redirect, session, send_file
 import os
 import re
+import requests
 from datetime import datetime
 
-from PIL import Image
-import pytesseract
 import openpyxl
 
 from database import (
@@ -16,7 +15,7 @@ from database import (
 )
 
 # =====================================================
-# CONFIG APP
+# CONFIG
 # =====================================================
 
 app = Flask(__name__)
@@ -30,24 +29,19 @@ if not os.path.exists(UPLOAD_FOLDER):
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # =====================================================
-# OCR TESSERACT
+# OCR API KEY
 # =====================================================
 
-# SOLO PARA WINDOWS LOCAL
-# En Render normalmente NO existe Tesseract
-TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-
-if os.path.exists(TESSERACT_PATH):
-    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+OCR_API_KEY = K87458836088957
 
 # =====================================================
-# INICIAR DB
+# INIT DB
 # =====================================================
 
 init_db()
 
 # =====================================================
-# FUNCIONES AUXILIARES
+# FUNCIONES
 # =====================================================
 
 def safe_float(valor):
@@ -62,21 +56,16 @@ def safe_float(valor):
     texto = texto.replace(" ", "")
 
     # ---------------------------------------------
-    # CASOS:
     # 127.000,00
-    # 1.250,50
-    # 999,99
     # ---------------------------------------------
 
     if "." in texto and "," in texto:
 
-        # europeo: 127.000,00
         texto = texto.replace(".", "")
         texto = texto.replace(",", ".")
 
     elif "," in texto:
 
-        # 250,50
         texto = texto.replace(",", ".")
 
     try:
@@ -94,10 +83,10 @@ def extraer_total(texto):
 
     for n in numeros:
 
-        v = safe_float(n)
+        valor = safe_float(n)
 
-        if v > 0:
-            valores.append(v)
+        if valor > 0:
+            valores.append(valor)
 
     if not valores:
         return 0.0
@@ -109,31 +98,20 @@ def clasificar(texto):
 
     t = texto.lower()
 
-    # ---------------------------------------------
-    # INGRESOS
-    # ---------------------------------------------
-
     palabras_ingreso = [
-        "factura emitida",
-        "factura venta",
         "cliente",
-        "cobro",
-        "ingreso",
+        "factura emitida",
         "venta",
-        "base imponible"
+        "ingreso",
+        "cobro"
     ]
 
-    # ---------------------------------------------
-    # GASTOS
-    # ---------------------------------------------
-
     palabras_gasto = [
-        "factura recibida",
         "proveedor",
+        "factura recibida",
         "compra",
         "ticket",
-        "gasto",
-        "pagado"
+        "gasto"
     ]
 
     for p in palabras_ingreso:
@@ -144,17 +122,31 @@ def clasificar(texto):
         if p in t:
             return "GASTO"
 
-    # ---------------------------------------------
-    # HEURÍSTICA SIMPLE
-    # ---------------------------------------------
-
-    if "cliente" in t:
-        return "INGRESO"
-
-    if "proveedor" in t:
-        return "GASTO"
-
     return "DESCONOCIDO"
+
+
+def hacer_ocr(filepath):
+
+    with open(filepath, "rb") as f:
+
+        response = requests.post(
+            "https://api.ocr.space/parse/image",
+            files={"filename": f},
+            data={
+                "apikey": OCR_API_KEY,
+                "language": "spa",
+                "isOverlayRequired": False
+            }
+        )
+
+    resultado = response.json()
+
+    if resultado.get("IsErroredOnProcessing"):
+        return ""
+
+    texto = resultado["ParsedResults"][0]["ParsedText"]
+
+    return texto
 
 # =====================================================
 # HOME
@@ -188,7 +180,7 @@ def login():
 
             return redirect("/contabilidad")
 
-        return "❌ Usuario o contraseña incorrectos"
+        return "Usuario incorrecto"
 
     return render_template("login.html")
 
@@ -222,7 +214,7 @@ def logout():
     return redirect("/login")
 
 # =====================================================
-# DASHBOARD CONTABILIDAD
+# CONTABILIDAD
 # =====================================================
 
 @app.route("/contabilidad")
@@ -233,8 +225,8 @@ def contabilidad():
 
     movimientos = get_movimientos(session["user_id"])
 
-    ingresos = 0.0
-    gastos = 0.0
+    ingresos = 0
+    gastos = 0
 
     for m in movimientos:
 
@@ -258,7 +250,7 @@ def contabilidad():
     )
 
 # =====================================================
-# UPLOAD + OCR
+# UPLOAD + OCR CLOUD
 # =====================================================
 
 @app.route("/upload", methods=["POST"])
@@ -268,12 +260,12 @@ def upload_file():
         return redirect("/login")
 
     if "file" not in request.files:
-        return "❌ No se encontró archivo"
+        return "No file"
 
     file = request.files["file"]
 
     if file.filename == "":
-        return "❌ Archivo vacío"
+        return "Archivo vacío"
 
     filepath = os.path.join(
         app.config["UPLOAD_FOLDER"],
@@ -287,12 +279,10 @@ def upload_file():
     try:
 
         # =========================================
-        # OCR
+        # OCR CLOUD
         # =========================================
 
-        img = Image.open(filepath).convert("L")
-
-        texto = pytesseract.image_to_string(img)
+        texto = hacer_ocr(filepath)
 
         # =========================================
         # EXTRAER TOTAL
@@ -307,7 +297,7 @@ def upload_file():
         tipo = clasificar(texto)
 
         # =========================================
-        # GUARDAR
+        # GUARDAR DB
         # =========================================
 
         insert_movimiento(
@@ -322,7 +312,7 @@ def upload_file():
 
     except Exception as e:
 
-        return f"ERROR OCR: {e}"
+        return f"ERROR OCR CLOUD: {e}"
 
 # =====================================================
 # EXPORTAR EXCEL
