@@ -3,7 +3,6 @@ import os
 import re
 import requests
 from datetime import datetime
-
 import openpyxl
 
 from database import (
@@ -15,7 +14,7 @@ from database import (
 )
 
 # =====================================================
-# CONFIG
+# APP CONFIG
 # =====================================================
 
 app = Flask(__name__)
@@ -29,7 +28,7 @@ if not os.path.exists(UPLOAD_FOLDER):
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # =====================================================
-# OCR API KEY
+# OCR API (OCR.space)
 # =====================================================
 
 OCR_API_KEY = "K87458836088957"
@@ -41,11 +40,10 @@ OCR_API_KEY = "K87458836088957"
 init_db()
 
 # =====================================================
-# FUNCIONES
+# UTILIDADES
 # =====================================================
 
 def safe_float(valor):
-
     if valor is None:
         return 0.0
 
@@ -55,71 +53,44 @@ def safe_float(valor):
     texto = texto.replace("EUR", "")
     texto = texto.replace(" ", "")
 
-    # ---------------------------------------------
-    # 127.000,00
-    # ---------------------------------------------
-
+    # formato europeo 1.234,56
     if "." in texto and "," in texto:
-
         texto = texto.replace(".", "")
         texto = texto.replace(",", ".")
 
     elif "," in texto:
-
         texto = texto.replace(",", ".")
 
     try:
         return float(texto)
-
     except:
         return 0.0
 
 
 def extraer_total(texto):
-
     numeros = re.findall(r"\d+[.,]?\d*[.,]?\d*", texto)
 
     valores = []
-
     for n in numeros:
+        v = safe_float(n)
+        if v > 0:
+            valores.append(v)
 
-        valor = safe_float(n)
-
-        if valor > 0:
-            valores.append(valor)
-
-    if not valores:
-        return 0.0
-
-    return max(valores)
+    return max(valores) if valores else 0.0
 
 
 def clasificar(texto):
-
     t = texto.lower()
 
-    palabras_ingreso = [
-        "cliente",
-        "factura emitida",
-        "venta",
-        "ingreso",
-        "cobro"
-    ]
+    ingresos = ["venta", "cliente", "factura emitida", "ingreso", "cobro"]
+    gastos = ["proveedor", "compra", "gasto", "factura recibida", "ticket"]
 
-    palabras_gasto = [
-        "proveedor",
-        "factura recibida",
-        "compra",
-        "ticket",
-        "gasto"
-    ]
-
-    for p in palabras_ingreso:
-        if p in t:
+    for i in ingresos:
+        if i in t:
             return "INGRESO"
 
-    for p in palabras_gasto:
-        if p in t:
+    for g in gastos:
+        if g in t:
             return "GASTO"
 
     return "DESCONOCIDO"
@@ -128,7 +99,6 @@ def clasificar(texto):
 def hacer_ocr(filepath):
 
     with open(filepath, "rb") as f:
-
         response = requests.post(
             "https://api.ocr.space/parse/image",
             files={"filename": f},
@@ -139,58 +109,44 @@ def hacer_ocr(filepath):
             }
         )
 
-    resultado = response.json()
+    result = response.json()
 
-    if resultado.get("IsErroredOnProcessing"):
+    if result.get("IsErroredOnProcessing"):
         return ""
 
-    texto = resultado["ParsedResults"][0]["ParsedText"]
-
-    return texto
+    return result["ParsedResults"][0]["ParsedText"]
 
 # =====================================================
-# HOME
+# ROUTES
 # =====================================================
 
 @app.route("/")
 def home():
-
     if "user_id" not in session:
         return redirect("/login")
-
     return redirect("/contabilidad")
 
-# =====================================================
-# LOGIN
-# =====================================================
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-
     if request.method == "POST":
 
         username = request.form["username"]
         password = request.form["password"]
 
-        usuario = buscar_usuario(username, password)
+        user = buscar_usuario(username, password)
 
-        if usuario:
-
-            session["user_id"] = usuario[0]
-
+        if user:
+            session["user_id"] = user[0]
             return redirect("/contabilidad")
 
         return "Usuario incorrecto"
 
     return render_template("login.html")
 
-# =====================================================
-# REGISTER
-# =====================================================
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-
     if request.method == "POST":
 
         username = request.form["username"]
@@ -202,20 +158,12 @@ def register():
 
     return render_template("register.html")
 
-# =====================================================
-# LOGOUT
-# =====================================================
 
 @app.route("/logout")
 def logout():
-
     session.clear()
-
     return redirect("/login")
 
-# =====================================================
-# CONTABILIDAD
-# =====================================================
 
 @app.route("/contabilidad")
 def contabilidad():
@@ -229,13 +177,11 @@ def contabilidad():
     gastos = 0
 
     for m in movimientos:
-
         importe = safe_float(m[3])
         tipo = m[4]
 
         if tipo == "INGRESO":
             ingresos += importe
-
         elif tipo == "GASTO":
             gastos += importe
 
@@ -249,74 +195,37 @@ def contabilidad():
         beneficio=round(beneficio, 2)
     )
 
-# =====================================================
-# UPLOAD + OCR CLOUD
-# =====================================================
 
 @app.route("/upload", methods=["POST"])
-def upload_file():
+def upload():
 
     if "user_id" not in session:
         return redirect("/login")
-
-    if "file" not in request.files:
-        return "No file"
 
     file = request.files["file"]
 
     if file.filename == "":
         return "Archivo vacío"
 
-    filepath = os.path.join(
-        app.config["UPLOAD_FOLDER"],
-        file.filename
-    )
-
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
     file.save(filepath)
 
     fecha = datetime.now().strftime("%Y-%m-%d")
 
-    try:
+    texto = hacer_ocr(filepath)
+    total = extraer_total(texto)
+    tipo = clasificar(texto)
 
-        # =========================================
-        # OCR CLOUD
-        # =========================================
+    insert_movimiento(
+        session["user_id"],
+        texto,
+        total,
+        tipo,
+        fecha
+    )
 
-        texto = hacer_ocr(filepath)
+    return redirect("/contabilidad")
 
-        # =========================================
-        # EXTRAER TOTAL
-        # =========================================
-
-        total = extraer_total(texto)
-
-        # =========================================
-        # CLASIFICAR
-        # =========================================
-
-        tipo = clasificar(texto)
-
-        # =========================================
-        # GUARDAR DB
-        # =========================================
-
-        insert_movimiento(
-            session["user_id"],
-            texto,
-            total,
-            tipo,
-            fecha
-        )
-
-        return redirect("/contabilidad")
-
-    except Exception as e:
-
-        return f"ERROR OCR CLOUD: {e}"
-
-# =====================================================
-# EXPORTAR EXCEL
-# =====================================================
 
 @app.route("/exportar_excel")
 def exportar_excel():
@@ -327,37 +236,24 @@ def exportar_excel():
     movimientos = get_movimientos(session["user_id"])
 
     wb = openpyxl.Workbook()
-
     ws = wb.active
-
     ws.title = "Contabilidad"
 
-    ws.append([
-        "Fecha",
-        "Tipo",
-        "Importe"
-    ])
+    ws.append(["Fecha", "Tipo", "Importe"])
 
     for m in movimientos:
+        ws.append([m[5], m[4], m[3]])
 
-        ws.append([
-            m[5],
-            m[4],
-            m[3]
-        ])
+    file = "contabilidad.xlsx"
+    wb.save(file)
 
-    archivo = "contabilidad.xlsx"
+    return send_file(file, as_attachment=True)
 
-    wb.save(archivo)
-
-    return send_file(
-        archivo,
-        as_attachment=True
-    )
 
 # =====================================================
-# MAIN
+# RUN (IMPORTANTE PARA RENDER)
 # =====================================================
 
 if __name__ == "__main__":
-    app.run()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
